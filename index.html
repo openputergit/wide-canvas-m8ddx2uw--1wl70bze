@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Interactive Book</title>
+    <script src="https://unpkg.com/three@0.157.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.157.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #book-container { width: 100vw; height: 100vh; }
+        .ui-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .upload-section {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.8);
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div id="book-container"></div>
+
+    <div class="upload-section">
+        <input type="file" id="pdfUpload" accept=".pdf" class="hidden" multiple>
+        <label for="pdfUpload" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
+            Upload PDF
+        </label>
+        <div id="pageCount" class="text-white mt-2"></div>
+    </div>
+
+    <div class="ui-controls">
+        <button id="prevPage" class="bg-blue-500 text-white px-4 py-2 rounded mr-2 hover:bg-blue-600">Previous</button>
+        <button id="nextPage" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Next</button>
+        <button id="toggleView" class="bg-green-500 text-white px-4 py-2 rounded ml-2 hover:bg-green-600">Toggle View</button>
+    </div>
+
+    <audio id="pageFlipSound" src="https://www.soundjay.com/page-flip-01.mp3" preload="auto"></audio>
+
+    <script>
+        let scene, camera, renderer, book, pages = [], currentPage = 0;
+        let isDualPage = false;
+        const pageFlipSound = document.getElementById('pageFlipSound');
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('book-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, 1, 1);
+            scene.add(directionalLight);
+
+            camera.position.z = 5;
+
+            // Controls
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            createBook();
+            animate();
+        }
+
+        function createBook() {
+            // Book cover
+            const coverGeometry = new THREE.BoxGeometry(3, 4, 0.3);
+            const coverMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2c3e50,
+                roughness: 0.5,
+                metalness: 0.1
+            });
+            book = new THREE.Mesh(coverGeometry, coverMaterial);
+            scene.add(book);
+
+            // Create sample pages
+            for(let i = 0; i < 5; i++) {
+                createPage();
+            }
+        }
+
+        function createPage() {
+            const pageGeometry = new THREE.PlaneGeometry(2.8, 3.8);
+            const pageMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff,
+                side: THREE.DoubleSide
+            });
+            const page = new THREE.Mesh(pageGeometry, pageMaterial);
+            page.position.z = 0.15 - (pages.length * 0.01);
+            pages.push(page);
+            scene.add(page);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        function flipPage(direction) {
+            pageFlipSound.currentTime = 0;
+            pageFlipSound.play();
+
+            const totalPages = pages.length;
+            if (direction === 'next' && currentPage < totalPages - 1) {
+                currentPage++;
+            } else if (direction === 'prev' && currentPage > 0) {
+                currentPage--;
+            }
+
+            updatePageDisplay();
+        }
+
+        function updatePageDisplay() {
+            pages.forEach((page, index) => {
+                if (isDualPage) {
+                    page.rotation.y = index <= currentPage ? Math.PI : 0;
+                } else {
+                    page.rotation.y = index <= currentPage ? Math.PI : 0;
+                }
+            });
+        }
+
+        // Event Listeners
+        document.getElementById('nextPage').addEventListener('click', () => flipPage('next'));
+        document.getElementById('prevPage').addEventListener('click', () => flipPage('prev'));
+        document.getElementById('toggleView').addEventListener('click', () => {
+            isDualPage = !isDualPage;
+            updatePageDisplay();
+        });
+
+        document.getElementById('pdfUpload').addEventListener('change', (event) => {
+            const files = event.target.files;
+            // Here you would typically implement PDF processing
+            // For demo purposes, we'll just create new pages
+            pages.forEach(page => scene.remove(page));
+            pages = [];
+            for(let i = 0; i < files.length; i++) {
+                createPage();
+            }
+            currentPage = 0;
+            updatePageDisplay();
+            document.getElementById('pageCount').textContent = `Pages: ${files.length}`;
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Click anywhere to flip
+        document.addEventListener('click', (event) => {
+            if (event.target.tagName !== 'BUTTON' && event.target.tagName !== 'LABEL') {
+                if (event.clientX > window.innerWidth / 2) {
+                    flipPage('next');
+                } else {
+                    flipPage('prev');
+                }
+            }
+        });
+
+        init();
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
